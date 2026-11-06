@@ -11,7 +11,7 @@ from pathlib import Path
 def run_sharp(image: Path, output_dir: Path) -> Path:
     executable = shutil.which("sharp")
     if not executable:
-        raise RuntimeError("SHARP CLI not found; install https://github.com/apple/ml-sharp")
+        raise RuntimeError("SHARP CLI not found; install https://github.com/apple-aiml-research/ml-sharp")
     output_dir.mkdir(parents=True, exist_ok=True)
     for old_ply in output_dir.glob("*.ply"):
         old_ply.unlink()
