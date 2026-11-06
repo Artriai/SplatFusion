@@ -13,7 +13,12 @@ def run_sharp(image: Path, output_dir: Path) -> Path:
     if not executable:
         raise RuntimeError("SHARP CLI not found; install https://github.com/apple/ml-sharp")
     output_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run([executable, "predict", "-i", str(image), "-o", str(output_dir)], check=True)
+    for old_ply in output_dir.glob("*.ply"):
+        old_ply.unlink()
+    subprocess.run(
+        [executable, "predict", "-i", str(image), "-o", str(output_dir)],
+        check=True,
+    )
     candidates = sorted(output_dir.glob("*.ply"))
     if len(candidates) == 1:
         return candidates[0]
@@ -26,17 +31,28 @@ def run_sharp(image: Path, output_dir: Path) -> Path:
 def run_vggt_omega(images: list[Path], output_json: Path, checkpoint: Path | None = None):
     runner = os.environ.get("SPLATFUSION_VGGT_OMEGA_RUNNER")
     if runner:
-        command = [runner]
+        runner_path = Path(runner)
+        command = [sys.executable, str(runner_path)] if runner_path.suffix == ".py" else [runner]
     else:
         command = [sys.executable, "-m", "splatfusion.vggt_runner"]
-    command += ["--images", json.dumps([str(p.resolve()) for p in images]),
-                "--output", str(output_json)]
-    checkpoint = checkpoint or (Path(os.environ["VGGT_OMEGA_CHECKPOINT"]) if os.environ.get("VGGT_OMEGA_CHECKPOINT") else None)
+    output_json.parent.mkdir(parents=True, exist_ok=True)
+    if output_json.exists():
+        output_json.unlink()
+    command += [
+        "--images",
+        json.dumps([str(p.resolve()) for p in images]),
+        "--output",
+        str(output_json),
+    ]
+    checkpoint = checkpoint or (
+        Path(os.environ["VGGT_OMEGA_CHECKPOINT"])
+        if os.environ.get("VGGT_OMEGA_CHECKPOINT") else None
+    )
     if checkpoint:
         command += ["--checkpoint", str(checkpoint)]
     else:
         raise RuntimeError("Provide --vggt-checkpoint or VGGT_OMEGA_CHECKPOINT")
     subprocess.run(command, check=True)
-    if not output_json.exists():
+    if not output_json.is_file():
         raise RuntimeError("VGGT-Ω runner did not create its JSON output")
     return json.loads(output_json.read_text(encoding="utf-8"))
