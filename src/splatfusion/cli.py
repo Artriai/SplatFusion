@@ -9,6 +9,9 @@ from .adapters import run_sharp, run_vggt_omega
 from .fusion import fuse_sharp_with_vggt
 from .pose_refinement import refine_prediction_file
 from .preprocess import normalize_images
+from .masking import prepare_masks
+from .gaussianobject_data import prepare_gaussianobject_dataset
+from .gaussianobject_adapter import run_gaussianobject
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
@@ -34,6 +37,7 @@ def build_manifest(images: list[Path], output: Path) -> dict:
                 "view_id": f"view_{i:04d}",
                 "image": str(image.resolve()),
                 "processed_image": str(image.resolve()),
+                "mask": None,
                 "sharp_ply": None,
                 "camera_to_world": None,
                 "intrinsics": None,
@@ -43,12 +47,25 @@ def build_manifest(images: list[Path], output: Path) -> dict:
         ],
         "notes": [
             "SHARP CLI exports Euclidean camera-frame Gaussians.",
-            "VGGT camera poses are used to place all views into a shared world frame.",
+            "VGGT camera poses place all views into a shared world frame.",
+            "GaussianObject receives VGGT-derived depth/cameras and SHARP-derived point initialization.",
         ],
     }
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.gaussianobject:
+        args.sharp = True
+        args.vggt = True
+        args.register = True
+        args.fuse = True
+        if args.gaussianobject_root is None:
+            raise SystemExit("--gaussianobject requires --gaussianobject-root")
+        if args.mask_dir is None and args.sam_checkpoint is None:
+            raise SystemExit("--gaussianobject requires --mask-dir or --sam-checkpoint")
+        if args.dry_run:
+            raise SystemExit("--dry-run cannot be combined with --gaussianobject")
+
     images = collect_images(args.input)
     if len(images) < 2:
         raise SystemExit(f"Need at least two supported images; found {len(images)}")
@@ -65,6 +82,20 @@ def run(args: argparse.Namespace) -> int:
         processed_images = normalize_images(images, args.output / "preprocessed")
     for view, processed in zip(manifest["views"], processed_images):
         view["processed_image"] = str(processed.resolve())
+
+    mask_paths = None
+    if not args.dry_run and (args.mask_dir is not None or args.sam_checkpoint is not None):
+        mask_paths = prepare_masks(
+            processed_images,
+            args.output / "masks",
+            mask_dir=args.mask_dir,
+            sam_checkpoint=args.sam_checkpoint,
+            model_type=args.sam_model_type,
+            device=args.sam_device,
+            source_paths=images,
+        )
+        for view, mask in zip(manifest["views"], mask_paths):
+            view["mask"] = str(mask.resolve())
 
     if args.sharp and not args.dry_run:
         for index, view in enumerate(manifest["views"]):
@@ -126,20 +157,59 @@ def run(args: argparse.Namespace) -> int:
         print("Dry run: no model inference executed.")
         return 0
 
+    fused_path = args.output / "fused" / "fused.ply"
     if args.fuse:
-        result = fuse_sharp_with_vggt(
+        fusion_result = fuse_sharp_with_vggt(
             manifest_path,
-            args.output / "fused" / "fused.ply",
+            fused_path,
             voxel_size=args.voxel_size,
             max_gaussians=args.max_gaussians,
             allow_unscaled=args.allow_unscaled,
         )
-        manifest["fusion"] = result
+        manifest["fusion"] = fusion_result
         manifest["stage"] = "initial_fusion_complete"
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-        print(f"Initial fused PLY: {result['output']} ({result['gaussians']} Gaussians)")
-        print("This is a Gaussian initialization fusion, not GaussianObject training.")
-    else:
+        print(f"Initial fused PLY: {fusion_result['output']} ({fusion_result['gaussians']} Gaussians)")
+
+    if args.gaussianobject:
+        if not mask_paths:
+            raise RuntimeError("GaussianObject requires foreground masks")
+        dataset_dir = args.output / "gaussianobject_data"
+        dataset_metadata = prepare_gaussianobject_dataset(
+            manifest_path,
+            manifest["vggt_predictions"],
+            mask_paths,
+            dataset_dir,
+            fused_sharp_ply=fused_path,
+            image_size=args.gaussianobject_image_size,
+            stride=args.gaussianobject_stride,
+            max_pointcloud_points=args.gaussianobject_max_points,
+        )
+        manifest["gaussianobject_dataset"] = dataset_metadata
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        gaussianobject_result = run_gaussianobject(
+            args.gaussianobject_root,
+            dataset_dir,
+            args.output / "gaussianobject",
+            mode=args.gaussianobject_mode,
+            gpu=args.gaussianobject_gpu,
+            coarse_iterations=args.gaussianobject_coarse_iterations,
+            loo_iterations=args.gaussianobject_loo_iterations,
+            lora_steps=args.gaussianobject_lora_steps,
+            repair_steps=args.gaussianobject_repair_steps,
+            prompt_token=args.gaussianobject_prompt_token,
+            sh_degree=args.gaussianobject_sh_degree,
+            use_sharp_prior=not args.no_sharp_prior,
+        )
+        manifest["gaussianobject"] = gaussianobject_result
+        manifest["stage"] = (
+            "complete" if args.gaussianobject_mode == "full"
+            else "coarse_gaussianobject_complete"
+        )
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        print(f"GaussianObject output: {gaussianobject_result['output_ply']}")
+    elif not args.fuse:
         print(f"Completed stage: {manifest['stage']}")
     return 0
 
@@ -148,7 +218,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="splatfusion")
     sub = parser.add_subparsers(dest="command", required=True)
     run_parser = sub.add_parser(
-        "run", help="Run multi-view Gaussian reconstruction stages"
+        "run", help="Run casual multi-view Gaussian reconstruction"
     )
     run_parser.add_argument("input", type=Path)
     run_parser.add_argument("--output", type=Path, default=Path("runs/default"))
@@ -163,18 +233,28 @@ def main() -> None:
     run_parser.add_argument("--registration-stride", type=int, default=4)
     run_parser.add_argument("--registration-voxel-size", type=float, default=0.01)
     run_parser.add_argument("--registration-neighbors", type=int, default=4)
-    run_parser.add_argument(
-        "--fuse",
-        action="store_true",
-        help="Transform and fuse SHARP camera-frame Gaussian priors",
-    )
+    run_parser.add_argument("--fuse", action="store_true")
     run_parser.add_argument("--voxel-size", type=float, default=0.005)
     run_parser.add_argument("--max-gaussians", type=int, default=2000000)
-    run_parser.add_argument(
-        "--allow-unscaled",
-        action="store_true",
-        help="Allow scale-1 fallback if SHARP/VGGT depth calibration fails",
-    )
+    run_parser.add_argument("--allow-unscaled", action="store_true")
+    run_parser.add_argument("--mask-dir", type=Path)
+    run_parser.add_argument("--sam-checkpoint", type=Path)
+    run_parser.add_argument("--sam-model-type", choices=("vit_h", "vit_l", "vit_b"), default="vit_h")
+    run_parser.add_argument("--sam-device", default=None)
+    run_parser.add_argument("--gaussianobject", action="store_true")
+    run_parser.add_argument("--gaussianobject-root", type=Path)
+    run_parser.add_argument("--gaussianobject-mode", choices=("coarse", "full"), default="full")
+    run_parser.add_argument("--gaussianobject-gpu", default="0")
+    run_parser.add_argument("--gaussianobject-coarse-iterations", type=int, default=15000)
+    run_parser.add_argument("--gaussianobject-loo-iterations", type=int, default=15000)
+    run_parser.add_argument("--gaussianobject-lora-steps", type=int, default=1800)
+    run_parser.add_argument("--gaussianobject-repair-steps", type=int, default=4000)
+    run_parser.add_argument("--gaussianobject-prompt-token", default="xxy5syt00")
+    run_parser.add_argument("--gaussianobject-sh-degree", type=int, default=2)
+    run_parser.add_argument("--gaussianobject-image-size", type=int, default=512)
+    run_parser.add_argument("--gaussianobject-stride", type=int, default=4)
+    run_parser.add_argument("--gaussianobject-max-points", type=int, default=500000)
+    run_parser.add_argument("--no-sharp-prior", action="store_true")
     run_parser.add_argument("--dry-run", action="store_true")
     run_parser.set_defaults(func=run)
     args = parser.parse_args()
