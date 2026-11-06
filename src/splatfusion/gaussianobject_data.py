@@ -132,6 +132,8 @@ def prepare_gaussianobject_dataset(manifest_path, predictions_path, masks,
     """Create the exact image/mask/depth/camera/point-cloud layout expected by
     GaussianObject's COLMAP-free DUSt3R data reader, using VGGT-Ω predictions.
     """
+    if image_size < 64 or stride < 1 or max_pointcloud_points < 100:
+        raise ValueError("image_size must be >=64, stride >=1 and max_pointcloud_points >=100")
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     predictions = json.loads(Path(predictions_path).read_text(encoding="utf-8"))
     pred_by_image = {str(Path(v["image"]).resolve()): v for v in predictions["views"]}
