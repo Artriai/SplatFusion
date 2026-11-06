@@ -131,3 +131,42 @@ def merge_plys(paths: list[str | Path], output: str | Path):
     merged = np.concatenate(chunks)
     write_vertex(template, merged, output)
     return len(merged)
+
+
+def read_sharp_metadata(ply):
+    """Read camera metadata embedded by Apple's official SHARP PLY exporter.
+
+    Official sharp predict first calls unproject_gaussians with identity
+    extrinsics before save_ply. Vertex xyz are therefore already Euclidean
+    coordinates in the input camera frame (OpenCV: +x right, +y down,
+    +z forward), not NDC. The PLY stores focal intrinsics, image size and a
+    dummy identity extrinsic for that camera-local frame.
+    """
+    names = {element.name for element in ply.elements}
+    if "intrinsic" not in names or "image_size" not in names:
+        raise ValueError("PLY lacks SHARP intrinsic/image_size metadata; cannot verify camera frame")
+    intrinsic_values = np.asarray(ply["intrinsic"].data["intrinsic"], dtype=np.float64).reshape(-1)
+    if intrinsic_values.size != 9:
+        raise ValueError(f"Expected 9 intrinsic values, got {intrinsic_values.size}")
+    K = intrinsic_values.reshape(3, 3)
+    size_values = np.asarray(ply["image_size"].data["image_size"], dtype=np.int64).reshape(-1)
+    if size_values.size != 2:
+        raise ValueError("Expected image_size metadata [width,height]")
+    width, height = int(size_values[0]), int(size_values[1])
+    if "extrinsic" in names:
+        ext_values = np.asarray(ply["extrinsic"].data["extrinsic"], dtype=np.float64).reshape(-1)
+        if ext_values.size == 16:
+            extrinsic = ext_values.reshape(4, 4)
+        elif ext_values.size == 12:
+            extrinsic = np.eye(4)
+            extrinsic[:3] = ext_values.reshape(3, 4)
+            extrinsic[:3, :3] = extrinsic[:3, :3].T
+        else:
+            raise ValueError(f"Unsupported SHARP extrinsic metadata length: {ext_values.size}")
+    else:
+        extrinsic = np.eye(4)
+    if not np.allclose(extrinsic, np.eye(4), atol=1e-5):
+        raise ValueError("Expected SHARP CLI camera-local PLY with identity export extrinsic")
+    if width <= 0 or height <= 0 or K[0, 0] <= 0 or K[1, 1] <= 0:
+        raise ValueError("Invalid SHARP camera metadata")
+    return {"intrinsics": K, "width": width, "height": height, "extrinsic": extrinsic}
