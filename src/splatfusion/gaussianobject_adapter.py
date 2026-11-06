@@ -14,14 +14,19 @@ def _run(command, cwd: Path, env: dict, log_path: Path):
     with log_path.open("w", encoding="utf-8") as log:
         log.write("$ " + " ".join(map(str, command)) + "\n\n")
         log.flush()
-        subprocess.run(
-            list(map(str, command)),
-            cwd=str(cwd),
-            env=env,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                list(map(str, command)),
+                cwd=str(cwd),
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                f"GaussianObject stage failed with exit code {exc.returncode}; see log: {log_path}"
+            ) from exc
 
 
 def _latest_iteration_ply(model_dir: Path) -> Path:
