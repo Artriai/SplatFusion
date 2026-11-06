@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import numpy as np
 from .geometry import validate_transform
-from .ply import load_vertex, transform_vertex, write_vertex, read_sharp_metadata
+from .ply import load_vertex, transform_vertex, write_vertex_only, read_sharp_metadata
 from .preprocess import map_original_pixels_to_vggt
 
 
@@ -78,7 +78,7 @@ def fuse_sharp_with_vggt(manifest_path, output, voxel_size=0.005,
     pred_path = Path(manifest["vggt_predictions"])
     predictions = json.loads(pred_path.read_text(encoding="utf-8"))
     by_image = {str(Path(v["image"]).resolve()): v for v in predictions["views"]}
-    chunks, template, per_view = [], None, []
+    chunks, per_view = [], []
     for view in manifest["views"]:
         if not view.get("sharp_ply"):
             continue
@@ -124,6 +124,6 @@ def fuse_sharp_with_vggt(manifest_path, output, voxel_size=0.005,
         merged = merged[ids]
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    write_vertex(template, merged, output)
+    write_vertex_only(merged, output)
     return {"output": str(output.resolve()), "gaussians": int(len(merged)),
             "gaussians_before_deduplication": int(before), "views": per_view}
