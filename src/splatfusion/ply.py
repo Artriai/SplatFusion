@@ -85,7 +85,7 @@ def transform_vertex(data, T: np.ndarray):
         eigval, eigvec = np.linalg.eigh(cov2)
         order = np.argsort(eigval, axis=1)[:, ::-1]
         eigval = np.take_along_axis(eigval, order, axis=1)
-        eigvec = np.take_along_axis(eigvec, order[:, None, :], axis=2)
+        eigvec = np.stack([eigvec[i][:, order[i]] for i in range(len(eigvec))])
         # Keep right-handed rotation matrices.
         neg = np.linalg.det(eigvec) < 0
         eigvec[neg, :, -1] *= -1
