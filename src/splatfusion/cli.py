@@ -58,6 +58,8 @@ def build_manifest(images: list[Path], output: Path) -> dict:
 
 def preflight(args: argparse.Namespace) -> None:
     """Fail early on missing binaries, checkpoints or optional dependencies."""
+    if args.dry_run:
+        return
     if args.sharp and shutil.which("sharp") is None:
         raise SystemExit("SHARP CLI is missing; install apple-aiml-research/ml-sharp and ensure sharp is on PATH")
     if args.vggt:
