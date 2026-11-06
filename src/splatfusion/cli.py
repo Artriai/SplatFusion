@@ -60,6 +60,13 @@ def preflight(args: argparse.Namespace) -> None:
     """Fail early on missing binaries, checkpoints or optional dependencies."""
     if args.dry_run:
         return
+    if args.vggt or args.gaussianobject:
+        try:
+            import torch
+        except ImportError as exc:
+            raise SystemExit("VGGT-Ω and GaussianObject require PyTorch in this environment") from exc
+        if args.gaussianobject and not torch.cuda.is_available():
+            raise SystemExit("GaussianObject training requires a CUDA-capable PyTorch environment")
     if args.sharp and shutil.which("sharp") is None:
         raise SystemExit("SHARP CLI is missing; install apple-aiml-research/ml-sharp and ensure sharp is on PATH")
     if args.vggt:
