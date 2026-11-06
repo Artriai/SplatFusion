@@ -88,6 +88,8 @@ def global_register_fpfh(source: np.ndarray, target: np.ndarray, voxel_size: flo
         o3d.pipelines.registration.RANSACConvergenceCriteria(ransac_iterations, confidence))
     if result.fitness < 0.02:
         raise RuntimeError(f"Global registration found insufficient overlap (fitness={result.fitness:.4f})")
+    for cloud in (src, dst):
+        cloud.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
     refined = o3d.pipelines.registration.registration_icp(
         src, dst, voxel_size, result.transformation,
         o3d.pipelines.registration.TransformationEstimationPointToPlane())
