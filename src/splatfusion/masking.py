@@ -35,7 +35,8 @@ def _select_automatic_mask(annotations, height: int, width: int) -> np.ndarray:
 
 def prepare_masks(image_paths: list[Path], output_dir: Path,
                   mask_dir: Path | None = None, sam_checkpoint: Path | None = None,
-                  model_type: str = "vit_h", device: str | None = None,\n                  source_paths: list[Path] | None = None) -> list[Path]:
+                  model_type: str = "vit_h", device: str | None = None,
+                  source_paths: list[Path] | None = None) -> list[Path]:
     """Return one binary PNG mask per input image.
 
     External masks take precedence. Otherwise SAM's automatic mask generator is
@@ -74,12 +75,15 @@ def prepare_masks(image_paths: list[Path], output_dir: Path,
             image = np.asarray(source.convert("RGB"))
         h, w = image.shape[:2]
         if mask_dir is not None:
+            stems = [image_path.stem]
+            if source_paths is not None and index < len(source_paths):
+                stems.append(source_paths[index].stem)
             candidates = [
-                mask_dir / f"{image_path.stem}.png",
-                mask_dir / f"{image_path.stem}.jpg",
-                mask_dir / f"{image_path.stem}.jpeg",
-                mask_dir / f"view_{index:04d}.png",
+                mask_dir / f"{stem}{suffix}"
+                for stem in stems
+                for suffix in (".png", ".jpg", ".jpeg")
             ]
+            candidates.append(mask_dir / f"view_{index:04d}.png")
             mask_path = next((p for p in candidates if p.is_file()), None)
             if mask_path is None:
                 raise FileNotFoundError(f"No foreground mask found for {image_path.name} in {mask_dir}")
