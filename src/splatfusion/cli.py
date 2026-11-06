@@ -125,6 +125,8 @@ def run(args: argparse.Namespace) -> int:
     images = collect_images(args.input)
     if len(images) < 2:
         raise SystemExit(f"Need at least two supported images; found {len(images)}")
+    if args.gaussianobject and args.gaussianobject_mode == "full" and len(images) < 4:
+        raise SystemExit("Full GaussianObject repair expects at least four input views")
     if args.fuse and not (args.sharp and args.vggt):
         raise SystemExit("--fuse requires both --sharp and --vggt")
     if args.register and not args.vggt:
