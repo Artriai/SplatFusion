@@ -28,7 +28,7 @@ def run_vggt_omega(images: list[Path], output_json: Path, checkpoint: Path | Non
     if runner:
         command = [runner]
     else:
-        command = [sys.executable, str(Path(__file__).resolve().parents[2] / "scripts" / "vggt_omega_runner.py")]
+        command = [sys.executable, "-m", "splatfusion.vggt_runner"]
     command += ["--images", json.dumps([str(p.resolve()) for p in images]),
                 "--output", str(output_json)]
     checkpoint = checkpoint or (Path(os.environ["VGGT_OMEGA_CHECKPOINT"]) if os.environ.get("VGGT_OMEGA_CHECKPOINT") else None)
