@@ -124,7 +124,6 @@ def run_gaussianobject(
         "--densify_until_iter", str(int(coarse_iterations * 0.6)),
         "--save_iterations", str(coarse_iterations),
         "--test_iterations", str(coarse_iterations),
-        "--quiet",
     ]
     _run(coarse_command, root, env, logs / "01_coarse.log")
     coarse_ply = _latest_iteration_ply(gs_dir)
