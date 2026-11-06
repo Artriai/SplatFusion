@@ -1,30 +1,29 @@
 # Implementation roadmap
 
-## Implemented in the current codebase
+## Implemented in the repository
 
-- Photo indexing, manifest generation and shared EXIF orientation normalization.
+- Shared EXIF normalization and photo indexing.
 - Per-image SHARP CLI inference.
-- Native VGGT-Ω Python runner with camera-to-world, intrinsics, depth, confidence and preprocessing metadata.
-- Open3D FPFH/RANSAC global point-cloud registration and point-to-plane ICP refinement.
-- Robust SE(3) pose-graph optimization with VGGT pose priors.
-- SHARP PLY metadata parsing and camera-frame Gaussian transforms.
-- Per-view SHARP/VGGT depth-based scale calibration.
-- Voxel duplicate reduction and output Gaussian count cap.
+- Native VGGT-Ω inference with camera-to-world, intrinsics, depth, confidence and preprocessing metadata.
+- SAM automatic foreground mask generation and external mask support.
+- Masked FPFH/RANSAC global point-cloud registration, point-to-plane ICP and robust SE(3) pose-graph refinement.
+- SHARP PLY metadata parsing, camera-frame Gaussian transforms and scale calibration against VGGT depth.
+- Mask-aware SHARP Gaussian filtering and voxel duplicate reduction.
+- GaussianObject-compatible data preparation from VGGT cameras/depth and SHARP point initialization.
+- GaussianObject training orchestration for coarse 3DGS, leave-one-out stages, LoRA training and repair.
 - Unit tests and GitHub Actions CI.
 
-## Remaining work before a complete end-to-end object reconstruction system
+## Remaining engineering and validation work
 
-1. **Object segmentation and visibility**: integrate SAM 2 masks; use original unmasked images for geometry estimation and masks for object-only point clouds/Gaussians.
-2. **Registration robustness**: add learned dense correspondence/track matching, overlap scoring, loop closure, disconnected-component handling and optional Sim(3) scale graph.
-3. **Scale calibration validation**: add confidence-weighted robust scale estimation and independent consistency checks across views; account for EXIF focal uncertainty and model depth bias.
-4. **Visibility-aware Gaussian fusion**: remove duplicate splats using view visibility, depth ordering, normals and appearance; reject monocular priors that contradict observed multi-view geometry.
-5. **GaussianObject adapter**: prepare the exact upstream dataset layout, masks and camera files; launch coarse training, floater elimination and repair; collect the optimized final PLY.
-6. **Rendering and quality report**: export novel-view videos, reprojection errors, coverage maps, confidence/uncertainty and per-view diagnostics.
-7. **Production orchestration**: batching, GPU memory budgeting, resumable stages, checkpoint caching, robust error recovery and CLI presets.
-8. **Validation**: run synthetic transform tests, public benchmark scenes and user-captured casual photo sets on supported GPU environments.
+1. **Robustness**: add learned correspondence/track matching, view-overlap scoring, loop closure, disconnected-component detection and optional Sim(3) pose graph.
+2. **Mask quality**: improve automatic subject selection for multiple prominent objects and offer optional text-guided segmentation.
+3. **Visibility-aware fusion**: use occlusion ordering, normals, view support and confidence to suppress contradictory monocular priors rather than relying only on voxel deduplication.
+4. **Training resilience**: add resume/checkpoint detection, subprocess timeouts, disk-space checks, GPU memory budgeting and recovery from interrupted GaussianObject stages.
+5. **Quality report**: export reprojection metrics, surface coverage, confidence/uncertainty maps and novel-view render videos.
+6. **Validation**: run synthetic geometry tests, public benchmark objects and user-captured casual photo sets on supported CUDA environments; tune defaults based on measured results.
 
 ## Completion criteria
 
-A complete release must accept a folder of arbitrary casual views and, with one command, generate a final jointly optimized 3DGS PLY plus a quality report. It must not require manual camera poses or PLY alignment. It must also fail clearly when views are disconnected or the geometry is insufficient, rather than silently returning a misleading result.
+A full run should accept a folder of arbitrary casual views and, with one command, generate a jointly optimized final 3DGS PLY plus diagnostics. It should not require manual camera poses or PLY alignment. It must fail clearly when masks, scale calibration, view overlap, checkpoints or GPU resources are insufficient.
 
-The current `fused.ply` is an initialization artifact, not yet the final GaussianObject reconstruction. GPU execution and reconstruction quality remain unverified in the repository environment.
+The repository now contains the full orchestration path, but GPU execution and reconstruction quality have not been validated in this environment. The first real run should be treated as an integration test, not as a guaranteed quality result.
