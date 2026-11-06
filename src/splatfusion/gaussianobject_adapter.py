@@ -84,6 +84,7 @@ def run_gaussianobject(
 
     metadata = json.loads((data / "splatfusion_dataset.json").read_text(encoding="utf-8"))
     n_views = int(metadata["views"])
+    image_size = int(metadata["image_size"])
     if mode == "full" and n_views < 4:
         raise ValueError("Full GaussianObject repair expects at least four views")
     if mode == "full":
@@ -194,7 +195,7 @@ def run_gaussianobject(
     lora_command = [
         sys.executable, "train_lora.py",
         "--sh_degree", str(sh_degree),
-        "--image_size", "512",
+        "--image_size", str(image_size),
         "--resolution", "1",
         "--sparse_num", str(n_views),
         "--gs_dir", gs_dir,
