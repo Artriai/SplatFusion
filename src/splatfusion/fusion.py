@@ -48,8 +48,12 @@ def estimate_sharp_to_vggt_scale(vertex_data, sharp_meta, prediction, min_sample
         conf = np.asarray(np.load(prediction["confidence_path"]), dtype=np.float64).squeeze()
         if conf.shape != depth.shape:
             raise ValueError("VGGT confidence shape does not match depth")
-        threshold = np.nanquantile(conf[np.isfinite(conf)], 0.3)
-        keep &= np.isfinite(conf[vi.clip(0, h-1), ui.clip(0, w-1)]) & (conf[vi.clip(0, h-1), ui.clip(0, w-1)] >= threshold)
+        finite_conf = conf[np.isfinite(conf)]
+        if finite_conf.size == 0:
+            raise ValueError("VGGT confidence map contains no finite values")
+        threshold = np.quantile(finite_conf, 0.3)
+        sampled_conf = conf[vi.clip(0, h-1), ui.clip(0, w-1)]
+        keep &= np.isfinite(sampled_conf) & (sampled_conf >= threshold)
     ratios = observed[keep] / z[keep]
     ratios = ratios[np.isfinite(ratios) & (ratios > 0)]
     if len(ratios) < min_samples:
@@ -89,8 +93,11 @@ def fuse_sharp_with_vggt(manifest_path, output, voxel_size=0.005,
         camera_to_world = validate_transform(np.asarray(prediction["camera_to_world"]))
         ply, data = load_vertex(view["sharp_ply"])
         metadata = read_sharp_metadata(ply)
-        if template is None:
-            template = ply
+        from PIL import Image
+        processed_image = Path(view.get("processed_image", view["image"]))
+        with Image.open(processed_image) as source_image:
+            if source_image.size != (metadata["width"], metadata["height"]):
+                raise ValueError("SHARP PLY resolution does not match the processed input image")
         try:
             scale, scale_stats = estimate_sharp_to_vggt_scale(data, metadata, prediction)
         except ValueError:
