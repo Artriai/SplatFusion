@@ -116,6 +116,8 @@ def _sharp_prior_to_pointcloud(source_ply: Path, output_ply: Path, center, scale
         first = np.concatenate(([True], sorted_voxels[1:] != sorted_voxels[:-1]))
         selected = order[first]
         xyz, colors = xyz[selected], colors[selected]
+    if len(xyz) < 100:
+        raise ValueError("Fused SHARP prior contains fewer than 100 usable points")
     if len(xyz) > max_points:
         rng = np.random.default_rng(0)
         selected = rng.choice(len(xyz), max_points, replace=False)
@@ -250,10 +252,17 @@ def prepare_gaussianobject_dataset(manifest_path, predictions_path, masks,
     _write_colored_pointcloud(output_dir / f"dust3r_{n_views}.ply", points, colors)
 
     sharp_prior_count = None
+    sharp_prior_error = None
     if fused_sharp_ply:
-        sharp_prior_count = _sharp_prior_to_pointcloud(
-            Path(fused_sharp_ply), output_dir / "sharp_prior.ply", center, scale
-        )
+        try:
+            sharp_prior_count = _sharp_prior_to_pointcloud(
+                Path(fused_sharp_ply), output_dir / "sharp_prior.ply", center, scale
+            )
+        except ValueError as exc:
+            sharp_prior_error = str(exc)
+            prior_path = output_dir / "sharp_prior.ply"
+            if prior_path.exists():
+                prior_path.unlink()
 
     metadata = {
         "dataset_dir": str(output_dir.resolve()),
@@ -262,7 +271,7 @@ def prepare_gaussianobject_dataset(manifest_path, predictions_path, masks,
         "normalization_center": center.tolist(),
         "normalization_scale": scale,
         "pointcloud_points": int(len(points)),
-        "sharp_prior_points": sharp_prior_count,
+        "sharp_prior_points": sharp_prior_count,\n        "sharp_prior_error": sharp_prior_error,
         "files": {
             "cameras": str((output_dir / f"dust3r_{n_views}.json").resolve()),
             "depth": str((output_dir / f"dust3r_depth_{n_views}.npy").resolve()),
