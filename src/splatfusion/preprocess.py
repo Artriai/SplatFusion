@@ -29,8 +29,14 @@ def normalize_images(images: list[Path], output_dir: Path) -> list[Path]:
                 image = Image.alpha_composite(background, rgba)
             image = image.convert("RGB")
             exif[274] = 1
-            target = output_dir / f"view_{index:04d}{path.suffix.lower()}"
-            save_kwargs = {"exif": exif.tobytes()}
+            suffix = path.suffix.lower()
+            if suffix not in (".jpg", ".jpeg", ".png", ".webp"):
+                suffix = ".png"
+            target = output_dir / f"view_{index:04d}{suffix}"
+            save_kwargs = {}
+            exif_bytes = exif.tobytes()
+            if exif_bytes:
+                save_kwargs["exif"] = exif_bytes
             if target.suffix in (".jpg", ".jpeg"):
                 save_kwargs.update({"quality": 98, "subsampling": 0})
             image.save(target, **save_kwargs)
