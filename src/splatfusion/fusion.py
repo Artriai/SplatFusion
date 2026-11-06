@@ -8,6 +8,27 @@ from .ply import load_vertex, transform_vertex, write_vertex_only, read_sharp_me
 from .preprocess import map_original_pixels_to_vggt
 
 
+
+def filter_gaussians_by_mask(vertex_data, sharp_meta, mask_path):
+    """Keep SHARP Gaussian centers projecting inside the per-view foreground mask."""
+    from PIL import Image
+    mask = np.asarray(Image.open(mask_path).convert("L"))
+    if mask.shape != (sharp_meta["height"], sharp_meta["width"]):
+        raise ValueError("Foreground mask resolution does not match SHARP PLY image_size")
+    xyz = np.column_stack([vertex_data[k] for k in ("x", "y", "z")]).astype(np.float64)
+    z = xyz[:, 2]
+    valid = np.isfinite(xyz).all(axis=1) & (z > 1e-6)
+    K = sharp_meta["intrinsics"]
+    u = np.rint(K[0, 0] * xyz[:, 0] / np.maximum(z, 1e-8) + K[0, 2]).astype(int)
+    v = np.rint(K[1, 1] * xyz[:, 1] / np.maximum(z, 1e-8) + K[1, 2]).astype(int)
+    inside = valid & (u >= 0) & (u < mask.shape[1]) & (v >= 0) & (v < mask.shape[0])
+    keep = np.zeros(len(vertex_data), dtype=bool)
+    keep[inside] = mask[v[inside], u[inside]] >= 128
+    if keep.sum() < 100:
+        raise ValueError(f"Foreground mask retained only {int(keep.sum())} SHARP Gaussians")
+    return vertex_data[keep]
+
+
 def estimate_sharp_to_vggt_scale(vertex_data, sharp_meta, prediction, min_samples=50):
     """Estimate per-view metric scale by comparing SHARP z with VGGT depth.
 
@@ -97,6 +118,8 @@ def fuse_sharp_with_vggt(manifest_path, output, voxel_size=0.005,
         camera_to_world = validate_transform(np.asarray(prediction["camera_to_world"]))
         ply, data = load_vertex(view["sharp_ply"])
         metadata = read_sharp_metadata(ply)
+        if view.get("mask"):
+            data = filter_gaussians_by_mask(data, metadata, view["mask"])
         from PIL import Image
         processed_image = Path(view.get("processed_image", view["image"]))
         with Image.open(processed_image) as source_image:
