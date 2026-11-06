@@ -57,6 +57,7 @@ def estimate_sharp_to_vggt_scale(vertex_data, sharp_meta, prediction, min_sample
         raise ValueError("VGGT output lacks preprocessing transform needed for SHARP/VGGT pixel correspondence")
     um, vm = map_original_pixels_to_vggt(u, v, prep)
     ui, vi = np.rint(um).astype(int), np.rint(vm).astype(int)
+    in_original_crop = (u >= prep["crop_left"]) & (u < prep["crop_left"] + prep["crop_width"]) & (v >= prep["crop_top"]) & (v < prep["crop_top"] + prep["crop_height"])
     depth = np.asarray(np.load(prediction["depth_path"]), dtype=np.float64).squeeze()
     if depth.ndim != 2:
         raise ValueError(f"Expected a 2D VGGT depth map, got {depth.shape}")
@@ -64,7 +65,7 @@ def estimate_sharp_to_vggt_scale(vertex_data, sharp_meta, prediction, min_sample
     inside = (ui >= 0) & (ui < w) & (vi >= 0) & (vi < h)
     observed = np.full(len(z), np.nan)
     observed[inside] = depth[vi[inside], ui[inside]]
-    keep = inside & np.isfinite(observed) & (observed > 1e-5)
+    keep = inside & in_original_crop & np.isfinite(observed) & (observed > 1e-5)
     if prediction.get("confidence_path"):
         conf = np.asarray(np.load(prediction["confidence_path"]), dtype=np.float64).squeeze()
         if conf.shape != depth.shape:
