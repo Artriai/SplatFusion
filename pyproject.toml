@@ -22,6 +22,7 @@ registration = ["open3d>=0.18"]
 sam = [
     "torch>=2.0",
     "torchvision>=0.15",
+    "opencv-python-headless>=4.8",
     "segment-anything @ git+https://github.com/facebookresearch/segment-anything.git",
 ]
 
