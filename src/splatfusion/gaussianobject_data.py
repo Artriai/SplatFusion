@@ -61,8 +61,10 @@ def _depth_to_letterbox(depth, confidence, preprocess, letterbox, size):
             confidence, [v_model.ravel(), u_model.ravel()], order=1,
             mode="constant", cval=0.0,
         ).reshape(new_h, new_w)
+    valid &= np.isfinite(sampled_depth) & (sampled_depth > 1e-6)
     sampled_depth[~valid] = 0
     sampled_conf[~valid] = 0
+    sampled_conf[~np.isfinite(sampled_conf)] = 0
     output_depth[top:top + new_h, left:left + new_w] = sampled_depth
     output_conf[top:top + new_h, left:left + new_w] = sampled_conf
     return output_depth, output_conf
@@ -167,6 +169,8 @@ def prepare_gaussianobject_dataset(manifest_path, predictions_path, masks,
             depth, confidence, pred["preprocess"], letterbox, image_size
         )
         depth_stack.append(depth_out)
+        if not np.isfinite(conf_out).any() or float(np.nanmax(conf_out)) <= 0:
+            raise RuntimeError(f"VGGT confidence is empty for view {index}")
         confidence_stack.append(conf_out)
 
         K_model = np.asarray(pred["intrinsics"], dtype=np.float64)
@@ -189,7 +193,9 @@ def prepare_gaussianobject_dataset(manifest_path, predictions_path, masks,
             threshold = np.quantile(valid_conf, 0.2)
         else:
             threshold = np.inf
-        valid = m & np.isfinite(z) & (z > 1e-6) & (conf >= threshold)
+        valid = m & np.isfinite(z) & (z > 1e-6) & np.isfinite(conf) & (conf >= threshold)
+        if valid.sum() < 50:
+            raise RuntimeError(f"View {index} has too few valid foreground depth pixels for GaussianObject")
         x_cam = (xx - cx) * z / fx
         y_cam = (yy - cy) * z / fy
         camera_xyz = np.stack([x_cam[valid], y_cam[valid], z[valid]], axis=1)
