@@ -170,6 +170,9 @@ def prepare_gaussianobject_dataset(manifest_path, predictions_path, masks,
         depth_out, conf_out = _depth_to_letterbox(
             depth, confidence, pred["preprocess"], letterbox, image_size
         )
+        mask_array = np.asarray(mask_out, dtype=np.uint8) >= 128
+        depth_out[~mask_array] = 0
+        conf_out[~mask_array] = 0
         depth_stack.append(depth_out)
         if not np.isfinite(conf_out).any() or float(np.nanmax(conf_out)) <= 0:
             raise RuntimeError(f"VGGT confidence is empty for view {index}")
@@ -183,7 +186,6 @@ def prepare_gaussianobject_dataset(manifest_path, predictions_path, masks,
         fy = fy_original * letterbox["scale_y"]
         cx = cy = image_size / 2.0
         c2w = np.asarray(pred["camera_to_world"], dtype=np.float64)
-        mask_array = np.asarray(mask_out, dtype=np.uint8) >= 128
         rgb_array = np.asarray(image_out, dtype=np.uint8)
 
         yy, xx = np.mgrid[0:image_size:stride, 0:image_size:stride]
