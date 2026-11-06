@@ -1,24 +1,30 @@
 # Implementation roadmap
 
-## Implemented in the scaffold
+## Implemented in the current codebase
 
-- Photo folder indexing and manifest generation.
-- Optional per-image invocation of Apple's SHARP CLI.
-- Optional VGGT-Ω runner hook with an explicit JSON interchange contract.
-- Similarity registration (Umeyama) and homogeneous point transforms.
-- Standard 3DGS PLY vertex transformation for means, log-scales and wxyz quaternions.
-- Concatenation of already co-registered PLYs (not a registration algorithm).
+- Photo indexing, manifest generation and shared EXIF orientation normalization.
+- Per-image SHARP CLI inference.
+- Native VGGT-Ω Python runner with camera-to-world, intrinsics, depth, confidence and preprocessing metadata.
+- Open3D FPFH/RANSAC global point-cloud registration and point-to-plane ICP refinement.
+- Robust SE(3) pose-graph optimization with VGGT pose priors.
+- SHARP PLY metadata parsing and camera-frame Gaussian transforms.
+- Per-view SHARP/VGGT depth-based scale calibration.
+- Voxel duplicate reduction and output Gaussian count cap.
+- Unit tests and GitHub Actions CI.
 
-## Still required for an end-to-end reconstruction
+## Remaining work before a complete end-to-end object reconstruction system
 
-1. **VGGT-Ω native adapter**: load the upstream checkpoint and emit camera-to-world matrices, intrinsics, depth and confidence arrays. Validate coordinate convention against upstream code.
-2. **Foreground masks**: integrate SAM 2 or another segmenter, with original unmasked frames retained for camera estimation.
-3. **SHARP frame calibration**: verify whether SHARP PLY coordinates coincide with its input camera frame; estimate per-view scale/rigid corrections from multi-view correspondences.
-4. **Robust registration**: match point maps/depth across overlapping views; use confidence-weighted RANSAC/Umeyama and a global pose graph. Reject disconnected or low-overlap views.
-5. **Visibility-aware fusion**: remove duplicate splats and reject monocular hallucinations that contradict observed multi-view depth.
-6. **GaussianObject adapter**: convert the globally aligned initialization and camera/mask data into the exact data layout expected by upstream scripts; launch training and collect checkpoint/PLY.
-7. **Evaluation**: novel-view rendering, reprojection error, point-cloud consistency, surface coverage, and runtime.
+1. **Object segmentation and visibility**: integrate SAM 2 masks; use original unmasked images for geometry estimation and masks for object-only point clouds/Gaussians.
+2. **Registration robustness**: add learned dense correspondence/track matching, overlap scoring, loop closure, disconnected-component handling and optional Sim(3) scale graph.
+3. **Scale calibration validation**: add confidence-weighted robust scale estimation and independent consistency checks across views; account for EXIF focal uncertainty and model depth bias.
+4. **Visibility-aware Gaussian fusion**: remove duplicate splats using view visibility, depth ordering, normals and appearance; reject monocular priors that contradict observed multi-view geometry.
+5. **GaussianObject adapter**: prepare the exact upstream dataset layout, masks and camera files; launch coarse training, floater elimination and repair; collect the optimized final PLY.
+6. **Rendering and quality report**: export novel-view videos, reprojection errors, coverage maps, confidence/uncertainty and per-view diagnostics.
+7. **Production orchestration**: batching, GPU memory budgeting, resumable stages, checkpoint caching, robust error recovery and CLI presets.
+8. **Validation**: run synthetic transform tests, public benchmark scenes and user-captured casual photo sets on supported GPU environments.
 
-## Why the pipeline is not yet called end-to-end
+## Completion criteria
 
-The three upstream projects are independent research codebases with different data contracts. A correct integration must explicitly validate pose direction, coordinate handedness, scale, camera intrinsics, SHARP PLY property conventions and GaussianObject training inputs. The current repository provides the orchestration and geometry foundation, but does not fabricate missing camera poses or silently merge unregistered predictions.
+A complete release must accept a folder of arbitrary casual views and, with one command, generate a final jointly optimized 3DGS PLY plus a quality report. It must not require manual camera poses or PLY alignment. It must also fail clearly when views are disconnected or the geometry is insufficient, rather than silently returning a misleading result.
+
+The current `fused.ply` is an initialization artifact, not yet the final GaussianObject reconstruction. GPU execution and reconstruction quality remain unverified in the repository environment.
