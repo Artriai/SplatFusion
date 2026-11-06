@@ -35,7 +35,7 @@ def _select_automatic_mask(annotations, height: int, width: int) -> np.ndarray:
 
 def prepare_masks(image_paths: list[Path], output_dir: Path,
                   mask_dir: Path | None = None, sam_checkpoint: Path | None = None,
-                  model_type: str = "vit_h", device: str | None = None) -> list[Path]:
+                  model_type: str = "vit_h", device: str | None = None,\n                  source_paths: list[Path] | None = None) -> list[Path]:
     """Return one binary PNG mask per input image.
 
     External masks take precedence. Otherwise SAM's automatic mask generator is
