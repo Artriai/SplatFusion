@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -51,6 +53,51 @@ def build_manifest(images: list[Path], output: Path) -> dict:
             "GaussianObject receives VGGT-derived depth/cameras and SHARP-derived point initialization.",
         ],
     }
+
+
+
+def preflight(args: argparse.Namespace) -> None:
+    """Fail early on missing binaries, checkpoints or optional dependencies."""
+    if args.sharp and shutil.which("sharp") is None:
+        raise SystemExit("SHARP CLI is missing; install apple-aiml-research/ml-sharp and ensure sharp is on PATH")
+    if args.vggt:
+        checkpoint = args.vggt_checkpoint or (
+            Path(os.environ["VGGT_OMEGA_CHECKPOINT"])
+            if os.environ.get("VGGT_OMEGA_CHECKPOINT") else None
+        )
+        if checkpoint is None or not checkpoint.is_file():
+            raise SystemExit("VGGT-Ω checkpoint missing; pass --vggt-checkpoint or set VGGT_OMEGA_CHECKPOINT")
+    if args.register:
+        try:
+            import open3d  # noqa: F401
+        except ImportError as exc:
+            raise SystemExit('Pose registration requires Open3D: pip install -e ".[registration]"') from exc
+    if args.mask_dir is not None and not args.mask_dir.is_dir():
+        raise SystemExit(f"Mask directory does not exist: {args.mask_dir}")
+    if args.sam_checkpoint is not None:
+        if not args.sam_checkpoint.is_file():
+            raise SystemExit(f"SAM checkpoint does not exist: {args.sam_checkpoint}")
+        try:
+            import segment_anything  # noqa: F401
+        except ImportError as exc:
+            raise SystemExit('SAM inference requires the SAM extra: pip install -e ".[sam]"') from exc
+    if args.gaussianobject:
+        root = args.gaussianobject_root
+        if root is None or not (root / "train_gs.py").is_file():
+            raise SystemExit("--gaussianobject requires a valid --gaussianobject-root checkout")
+        if args.gaussianobject_mode == "full":
+            required = [
+                root / "leave_one_out_stage1.py",
+                root / "leave_one_out_stage2.py",
+                root / "train_lora.py",
+                root / "train_repair.py",
+                root / "models" / "control_v11f1e_sd15_tile.yaml",
+                root / "models" / "v1-5-pruned.ckpt",
+                root / "models" / "control_v11f1e_sd15_tile.pth",
+            ]
+            missing = [str(path) for path in required if not path.is_file()]
+            if missing:
+                raise SystemExit(f"GaussianObject checkout or model assets are incomplete: {missing}")
 
 
 def run(args: argparse.Namespace) -> int:
