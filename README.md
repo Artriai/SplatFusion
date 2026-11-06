@@ -6,7 +6,7 @@ The target workflow accepts casual photos of the same rigid object (different vi
 
 ## Model roles
 
-- **SHARP** ([apple/ml-sharp](https://github.com/apple/ml-sharp)): per-image Gaussian predictions used as geometric/color initialization.
+- **SHARP** ([apple/ml-sharp](https://github.com/apple-aiml-research/ml-sharp)): per-image Gaussian predictions used as geometric/color initialization.
 - **VGGT-Ω** ([facebookresearch/vggt-omega](https://github.com/facebookresearch/vggt-omega)): multi-view camera, depth and confidence estimation.
 - **SAM** ([facebookresearch/segment-anything](https://github.com/facebookresearch/segment-anything)): foreground masks for object-only reconstruction.
 - **GaussianObject** ([chensjtu/GaussianObject](https://github.com/chensjtu/GaussianObject)): coarse 3DGS training, leave-one-out data generation, LoRA training and Gaussian repair.
