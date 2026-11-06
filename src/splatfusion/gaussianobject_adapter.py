@@ -74,15 +74,20 @@ def run_gaussianobject(
             raise FileNotFoundError(f"GaussianObject checkout is incomplete: {missing}")
     if not (data / "splatfusion_dataset.json").is_file():
         raise FileNotFoundError(f"Missing prepared GaussianObject dataset metadata in {data}")
-    if coarse_iterations < 1000 or loo_iterations < 6001:
-        raise ValueError("coarse_iterations must be >=1000 and loo_iterations must be >6000")
-    if lora_steps < 1 or repair_steps < 1:
+    if coarse_iterations < 1000:
+        raise ValueError("coarse_iterations must be >=1000")
+    if mode == "full" and loo_iterations < 6001:
+        raise ValueError("loo_iterations must be >6000 because stage 2 resumes from checkpoint 6000")
+    if mode == "full" and (lora_steps < 1 or repair_steps < 1):
         raise ValueError("LoRA and repair step counts must be positive")
 
     metadata = json.loads((data / "splatfusion_dataset.json").read_text(encoding="utf-8"))
     n_views = int(metadata["views"])
-    init_name = "sharp_prior" if use_sharp_prior and (data / "sharp_prior.ply").is_file() else f"dust3r_{n_views}"
-    run_name = output.name.replace(" ", "_")
+    if mode == "full" and n_views < 4:
+        raise ValueError("Full GaussianObject repair expects at least four views")
+    if mode == "full":
+        model_assets = [\n            root / "models" / "control_v11f1e_sd15_tile.yaml",\n            root / "models" / "v1-5-pruned.ckpt",\n            root / "models" / "control_v11f1e_sd15_tile.pth",\n        ]\n        missing_assets = [str(p) for p in model_assets if not p.is_file()]\n        if missing_assets:\n            raise FileNotFoundError(f"Missing GaussianObject pretrained model assets: {missing_assets}")\n    init_name = "sharp_prior" if use_sharp_prior and (data / "sharp_prior.ply").is_file() else f"dust3r_{n_views}"
+    run_name = output.parent.name.replace(" ", "_")
     gs_dir = output / "gs_init"
     loo_dir = output / "gs_loo"
     exp_name = f"controlnet_finetune/{run_name}"
