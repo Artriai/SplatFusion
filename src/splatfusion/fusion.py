@@ -77,7 +77,7 @@ def fuse_sharp_with_vggt(manifest_path, output, voxel_size=0.005,
     This is an initialization fusion only. It does not perform GaussianObject
     training or visibility-aware surface reconstruction.
     """
-    manifest_path = Path(manifest_path)
+    if max_gaussians < 1:\n        raise ValueError("max_gaussians must be positive")\n    if voxel_size < 0:\n        raise ValueError("voxel_size cannot be negative")\n    manifest_path = Path(manifest_path)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     pred_path = Path(manifest["vggt_predictions"])
     predictions = json.loads(pred_path.read_text(encoding="utf-8"))
@@ -122,9 +122,10 @@ def fuse_sharp_with_vggt(manifest_path, output, voxel_size=0.005,
         voxels = np.floor(xyz / voxel_size).astype(np.int64)
         _, inverse = np.unique(voxels, axis=0, return_inverse=True)
         score = merged["opacity"] if "opacity" in names else np.zeros(len(merged))
-        best = np.full(inverse.max() + 1, -np.inf)
-        np.maximum.at(best, inverse, score)
-        merged = merged[score == best[inverse]]
+        order = np.lexsort((np.arange(len(score)), -score, inverse))
+        sorted_voxels = inverse[order]
+        first_in_voxel = np.concatenate(([True], sorted_voxels[1:] != sorted_voxels[:-1]))
+        merged = merged[order[first_in_voxel]]
     if len(merged) > max_gaussians:
         score = merged["opacity"] if "opacity" in names else np.ones(len(merged))
         ids = np.argpartition(score, -max_gaussians)[-max_gaussians:]
