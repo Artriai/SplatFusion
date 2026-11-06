@@ -2,66 +2,90 @@
 
 Research prototype for unstructured multi-view object reconstruction with 3D Gaussian Splatting.
 
-The target workflow accepts casual photos of the same rigid object (different viewpoints, backgrounds and camera distances) and produces one globally consistent 3D representation.
+The goal: accept casual photos of the same rigid object (different viewpoints, backgrounds and camera distances) and produce one globally consistent 3D representation.
 
-## Research direction
+## Model roles
 
-- **SHARP** ([apple/ml-sharp](https://github.com/apple/ml-sharp)): fast single-image Gaussian predictions. Used as per-view priors/initialization, not naively concatenated.
+- **SHARP** ([apple/ml-sharp](https://github.com/apple/ml-sharp)): fast per-image Gaussian predictions, retained as view-local priors.
 - **VGGT-Ω** ([facebookresearch/vggt-omega](https://github.com/facebookresearch/vggt-omega)): multi-view camera and geometry estimation.
 - **GaussianObject** ([GaussianObject](https://github.com/GaussianObject/GaussianObject)): object-level Gaussian optimization and repair.
 
-Important: these repositories do not currently expose a plug-and-play compatible pipeline. Camera conventions, scale, masks, Gaussian parameterization and visibility must be validated before transforming SHARP PLYs into a shared frame. SHARP's hallucinated unseen regions must not be treated as observed geometry.
+These upstream projects are independent research codebases. The repository explicitly avoids pretending that their outputs are plug-and-play compatible: camera direction, coordinate frames, scale, PLY field conventions, masks and visibility need validation.
 
-## Current status
+## What's implemented
 
-This repository starts with an integration scaffold. The first runnable milestone is per-image SHARP inference plus a reproducible manifest. VGGT-Ω inference, cross-view registration, Gaussian fusion and GaussianObject optimization are deliberately separate adapters and are not claimed to be implemented yet.
+- Photo indexing and a reproducible JSON manifest.
+- Optional per-image SHARP CLI invocation.
+- Optional VGGT-Ω external runner contract.
+- Similarity alignment via Umeyama, point and covariance transforms.
+- Standard 3DGS PLY transformation (xyz, log-scales, wxyz quaternion) and concatenation of already registered PLYs.
+- Unit tests and GitHub Actions CI.
 
-## Quick start
+**Not yet implemented:** native VGGT-Ω inference, automatic robust multi-view registration/pose graph, visibility-aware Gaussian fusion, and GaussianObject training orchestration. See [ROADMAP](docs/ROADMAP.md) and [integration contract](docs/INTEGRATION.md).
 
-Python 3.10+ is recommended for the orchestration package. Install:
+## Install
+
+Python 3.10+:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e ".[dev]"
 ```
 
-Install Apple's SHARP separately using its official instructions and make sure the `sharp` executable is on PATH.
+Install Apple's SHARP separately following its official instructions and ensure `sharp` is on PATH.
 
-Put photos of one rigid object in a directory (JPG/PNG/WebP):
+## Run
 
-```bash
-printf 'your photos here\n'
-splatfusion run ./photos --output ./runs/demo --sharp
-```
-
-The command runs SHARP on each image and writes per-view PLYs plus `manifest.json`. It does **not** yet claim to produce a globally fused object.
-
-For a dry run without running inference:
+Place at least two photos of one rigid object in a folder:
 
 ```bash
 splatfusion run ./photos --output ./runs/demo --dry-run
 ```
 
-## Planned pipeline
+Run SHARP once per image:
 
-1. Validate and index input images; retain originals and record hashes.
-2. Segment the object while retaining unmasked originals for geometry estimation.
-3. Estimate all camera poses/depth with VGGT-Ω; check overlap and confidence.
-4. Run SHARP per image to obtain Gaussian priors.
-5. Calibrate coordinate frames and scale; align observations using multi-view geometry.
-6. Fuse only supported/visible Gaussian evidence; suppress duplicate and conflicting splats.
-7. Initialize and jointly optimize one object representation with GaussianObject-style losses/repair.
-8. Export PLY and diagnostics, including coverage and uncertain regions.
+```bash
+splatfusion run ./photos --output ./runs/demo --sharp
+```
+
+Run both SHARP and a configured VGGT-Ω runner:
+
+```bash
+export SPLATFUSION_VGGT_OMEGA_RUNNER=/path/to/your/vggt_omega_runner
+splatfusion run ./photos --output ./runs/demo --sharp --vggt
+```
+
+The VGGT-Ω runner contract is documented in [docs/INTEGRATION.md](docs/INTEGRATION.md). It must emit camera-to-world transforms, intrinsics and optional depth/confidence file paths. This hook is intentional: the upstream repository currently documents a Python API, not a stable CLI/export contract for SplatFusion.
+
+## Python geometry API
+
+```python
+import numpy as np
+from splatfusion.geometry import umeyama_similarity, transform_points
+from splatfusion.ply import transform_ply, merge_plys
+
+# Estimate transform mapping source 3D correspondences to reference points.
+T_ref_src = umeyama_similarity(source_xyz, reference_xyz, with_scale=True)
+aligned = transform_points(source_xyz, T_ref_src)
+
+# Transform a standard 3DGS PLY after confirming its frame and field convention.
+transform_ply("view_local.ply", "view_world.ply", T_ref_src)
+
+# Only concatenate PLYs after all of them are in the same validated world frame.
+merge_plys(["view0_world.ply", "view1_world.ply"], "merged.ply")
+```
+
+The PLY merge helper does not estimate alignment, visibility or duplicate removal. Do not use it as a substitute for multi-view registration.
 
 ## Design principles
 
-- Never concatenate independent SHARP PLY files and call that multi-view reconstruction.
+- Never concatenate independent SHARP PLYs and call that multi-view reconstruction.
 - Keep observed geometry separate from monocular prior/hallucinated geometry.
 - Treat pose, scale and coordinate conventions explicitly.
-- Fail with diagnostics when views cannot be reliably registered.
-- Preserve per-stage artifacts to make experiments reproducible.
+- Reject disconnected or low-confidence views instead of silently producing a misleading model.
+- Preserve per-stage artifacts for reproducible experiments.
 
 ## License
 
-This repository's code is licensed under the MIT License. The upstream models and dependencies retain their own licenses; check each upstream repository and checkpoint terms before use.
+SplatFusion code is licensed under MIT. Upstream models, checkpoints and dependencies retain their own licenses; check each upstream repository and checkpoint terms before use.
