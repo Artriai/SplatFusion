@@ -91,8 +91,10 @@ def run_gaussianobject(
             root / "models" / "v1-5-pruned.ckpt",
             root / "models" / "control_v11f1e_sd15_tile.pth",
         ]
-        missing_assets = [str(p) for p in model_assets if not p.is_file()]\n        if missing_assets:
-            raise FileNotFoundError(f"Missing GaussianObject pretrained model assets: {missing_assets}")\n    init_name = "sharp_prior" if use_sharp_prior and (data / "sharp_prior.ply").is_file() else f"dust3r_{n_views}"
+        missing_assets = [str(p) for p in model_assets if not p.is_file()]
+        if missing_assets:
+            raise FileNotFoundError(f"Missing GaussianObject pretrained model assets: {missing_assets}")
+    init_name = "sharp_prior" if use_sharp_prior and (data / "sharp_prior.ply").is_file() else f"dust3r_{n_views}"
     run_name = output.parent.name.replace(" ", "_")
     gs_dir = output / "gs_init"
     loo_dir = output / "gs_loo"
