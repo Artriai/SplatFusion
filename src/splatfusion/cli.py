@@ -74,7 +74,7 @@ def preflight(args: argparse.Namespace) -> None:
             raise SystemExit('Pose registration requires Open3D: pip install -e ".[registration]"') from exc
     if args.mask_dir is not None and not args.mask_dir.is_dir():
         raise SystemExit(f"Mask directory does not exist: {args.mask_dir}")
-    if args.sam_checkpoint is not None:
+    if args.sam_checkpoint is not None and args.mask_dir is None:
         if not args.sam_checkpoint.is_file():
             raise SystemExit(f"SAM checkpoint does not exist: {args.sam_checkpoint}")
         try:
