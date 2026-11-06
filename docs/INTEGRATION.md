@@ -5,48 +5,76 @@
 Install Apple's official repository and checkpoint using its instructions:
 https://github.com/apple/ml-sharp
 
-The adapter calls `sharp predict -i IMAGE -o OUTPUT_DIR` once per input image.
+SplatFusion calls `sharp predict -i IMAGE -o OUTPUT_DIR` once per normalized input image.
 
-Important coordinate detail: Apple's official `sharp predict` code predicts an internal NDC Gaussian set, then calls `unproject_gaussians(gaussians_ndc, identity_extrinsics, resized_intrinsics, internal_shape)` before calling `save_ply`. Thus the exported PLY vertex positions are already Euclidean coordinates in the input camera frame, not raw NDC. The camera convention is OpenCV (+x right, +y down, +z forward). The PLY contains the image intrinsics, image size and identity export extrinsic.
+Apple's official CLI predicts an internal NDC Gaussian set, then calls `unproject_gaussians` with identity extrinsics and resized intrinsics before `save_ply`. Exported PLY xyz are already Euclidean coordinates in the input OpenCV camera frame (+x right, +y down, +z forward), not raw NDC. The PLY contains the input intrinsics, image size and identity export extrinsic.
 
 Relevant upstream implementation:
 - https://github.com/apple-aiml-research/ml-sharp/blob/main/src/sharp/cli/predict.py
 - https://github.com/apple-aiml-research/ml-sharp/blob/main/src/sharp/utils/gaussians.py
 
-SplatFusion reads this metadata, projects SHARP Gaussian centers back into the source image, samples VGGT depth at corresponding preprocessed pixels, estimates a robust per-view scale correction, and then applies the VGGT camera-to-world transform. Do not apply an additional NDC unprojection to official SHARP CLI PLY files.
+SplatFusion projects SHARP Gaussian centers back to the source pixels, samples VGGT depth, estimates a robust per-view scale correction, optionally filters centers with foreground masks, and then applies VGGT camera-to-world. It does not apply a second NDC unprojection.
 
-The PLY transform helper supports standard 3DGS vertex fields: `x,y,z`, `scale_0..2` (log scales), and `rot_0..3` (wxyz). SHARP's quaternion implementation confirms wxyz ordering. Unknown PLY schemas are rejected rather than silently reinterpreted.
+The PLY transform helper supports standard 3DGS vertex fields: xyz, log-scales `scale_0..2`, and wxyz quaternions `rot_0..3`.
 
 ## VGGT-Ω
 
 Upstream: https://github.com/facebookresearch/vggt-omega
 
-SplatFusion includes `scripts/vggt_omega_runner.py`, which imports the upstream Python API and expects the checkpoint path supplied by `--vggt-checkpoint` or `VGGT_OMEGA_CHECKPOINT`.
+SplatFusion includes a native Python runner at `splatfusion.vggt_runner`. Install the upstream package and supply a checkpoint with `--vggt-checkpoint` or `VGGT_OMEGA_CHECKPOINT`.
 
 The runner:
-- normalizes the camera pose encoding to camera-to-world by inverting the upstream camera-from-world extrinsics;
+- decodes VGGT-Ω camera-from-world extrinsics and inverts them to camera-to-world;
 - exports OpenCV intrinsics, depth and confidence arrays;
-- records the exact crop/resize/pad mapping used by the VGGT input loader.
+- records the exact crop/resize/pad mapping used by the upstream input loader;
+- normalizes EXIF orientation once before SHARP and VGGT inference so their pixels correspond.
 
-VGGT-Ω checkpoint access and dependency installation remain governed by the upstream repository.
+## SAM masks
+
+SplatFusion supports Segment Anything's automatic mask generator. Install the optional SAM extra and pass `--sam-checkpoint`, or supply a directory of per-image binary masks with `--mask-dir`.
+
+Automatic mask selection is a central-object heuristic based on mask stability, predicted IoU, area and center coverage. It is not semantic object detection. When a scene contains several equally prominent objects, provide masks explicitly.
+
+Masks are used for:
+- filtering the per-view depth point clouds used by pose refinement;
+- filtering SHARP Gaussian centers before fusion;
+- preparing the masks expected by GaussianObject.
 
 ## Pose refinement
 
-`--register` builds camera-local point clouds by unprojecting VGGT depth maps. It tries FPFH feature matching + RANSAC global registration and point-to-plane ICP for nearby camera pairs, then robustly optimizes an SE(3) pose graph. VGGT poses are retained as low-weight adjacent-edge priors, so a failed pairwise registration does not invent a replacement pose.
+`--register` unprojects VGGT depth into camera-local point clouds, optionally filters by object masks, then attempts FPFH feature matching + RANSAC and point-to-plane ICP for nearby camera pairs. Pairwise camera-to-camera constraints are combined with low-weight VGGT pose priors in a robust SE(3) pose graph.
 
-Open3D is optional and required for this stage:
+Open3D is optional:
 `pip install -e ".[registration]"`.
 
-This refinement is not guaranteed to recover disconnected views or pairs with insufficient geometric overlap. The diagnostics record accepted and rejected edges.
+This is not guaranteed to connect disconnected views or recover pairs with insufficient overlap. Rejected pairwise edges and optimization diagnostics are stored in the registered prediction JSON.
 
-## GaussianObject
+## GaussianObject data contract and training
 
 Upstream: https://github.com/chensjtu/GaussianObject
 
-GaussianObject's released scripts are research training workflows rather than a stable callable library API. Its training data contract, masks, camera convention and optimization entry points still need a dedicated adapter. The current fused PLY is only an initialization artifact; it is not a trained GaussianObject output.
+SplatFusion prepares the upstream COLMAP-free DUSt3R-style directory contract from VGGT-Ω outputs:
+- `images/` and `masks/`;
+- `dust3r_N.json` camera records (id, img_name, dimensions, camera-to-world rotation/position, fx/fy);
+- `dust3r_depth_N.npy` and `dust3r_confidence_N.npy`;
+- `sparse_N.txt`;
+- `dust3r_N.ply` depth-derived point cloud;
+- `sharp_prior.ply` SHARP-derived point-cloud initialization.
+
+The GaussianObject adapter can run:
+1. `train_gs.py` coarse 3DGS training using SHARP prior points and VGGT depth/cameras;
+2. `leave_one_out_stage1.py` and `leave_one_out_stage2.py`;
+3. `train_lora.py`;
+4. `train_repair.py` with the upstream COLMAP-free config.
+
+The full mode requires at least four views, a recursive GaussianObject checkout, its CUDA extensions, Stable Diffusion/ControlNet assets and the relevant upstream checkpoints. It is computationally expensive. SplatFusion invokes upstream scripts but does not vendor or modify their code.
 
 ## Scale and visibility
 
-SHARP's metric camera-local coordinates and VGGT's predicted depth may have different scale. SplatFusion estimates a robust scale ratio from projected SHARP centers and VGGT depth samples. By default, fusion stops if there are too few valid correspondences. `--allow-unscaled` is a debugging escape hatch and should not be used for quality evaluation.
+SHARP camera-local coordinates and VGGT depth may differ in scale. SplatFusion estimates a robust scale ratio from projected SHARP centers and VGGT depth samples. Strict mode stops if there are too few correspondences; `--allow-unscaled` is a debugging escape hatch only.
 
-Current voxel deduplication is not full visibility-aware fusion. It does not yet reason about occlusion ordering, surface normals, object masks, or hidden-region hallucination. Those are required before treating the fused PLY as a final reconstruction.
+The fused SHARP PLY is an initialization, not the final reconstruction. Voxel deduplication does not fully reason about occlusion ordering, surface normals, view visibility or monocular hallucination. GaussianObject's subsequent multi-view optimization/repair is the intended final stage.
+
+## Licensing
+
+SplatFusion orchestration code is MIT-licensed. SHARP, VGGT-Ω, SAM, GaussianObject, Stable Diffusion, ControlNet, CUDA extensions and submodules have independent license terms. Check each upstream license and checkpoint terms before commercial or redistributed use.
