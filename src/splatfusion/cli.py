@@ -120,6 +120,7 @@ def run(args: argparse.Namespace) -> int:
                 stride=args.registration_stride,
                 voxel_size=args.registration_voxel_size,
                 neighbors=args.registration_neighbors,
+                masks=mask_paths,
             )
             manifest["pose_graph"] = graph_stats
             pred_path = registered_path
