@@ -220,7 +220,7 @@ def run_gaussianobject(
     ]
     _run(lora_command, root, env, logs / "04_train_lora.log")
     lora_dir = root / "output" / exp_name
-    lora_candidates = sorted(lora_dir.glob("lora-step=*.ckpt"))
+    lora_candidates = sorted(lora_dir.rglob("lora-step=*.ckpt"))
     if not lora_candidates:
         raise FileNotFoundError(f"LoRA training produced no checkpoint in {lora_dir}")
     lora_checkpoint = max(
