@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from .adapters import run_sharp, run_vggt_omega
 from .fusion import fuse_sharp_with_vggt
-from .pose_refinement import refine_prediction_file
+from .pose_refinement import refine_prediction_file\nfrom .preprocess import normalize_images
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
@@ -49,7 +49,7 @@ def run(args: argparse.Namespace) -> int:
     if args.vggt and not args.dry_run:
         pred_path = args.output / "vggt" / "predictions.json"
         pred_path.parent.mkdir(parents=True, exist_ok=True)
-        run_vggt_omega(images, pred_path, args.vggt_checkpoint)
+        run_vggt_omega(processed_images, pred_path, args.vggt_checkpoint)
         if args.register:
             registered_path = args.output / "vggt" / "predictions_registered.json"
             stats = refine_prediction_file(
@@ -60,7 +60,7 @@ def run(args: argparse.Namespace) -> int:
             manifest["stage"] = "pose_refined"
         manifest["vggt_predictions"] = str(pred_path.resolve())
         result = json.loads(pred_path.read_text(encoding="utf-8"))
-        by_image = {str(Path(v["image"]).resolve()): v for v in manifest["views"]}
+        by_image = {str(Path(v.get("processed_image", v["image"])).resolve()): v for v in manifest["views"]}
         for prediction in result.get("views", []):
             key = str(Path(prediction["image"]).resolve())
             if key in by_image:
