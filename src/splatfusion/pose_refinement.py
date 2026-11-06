@@ -7,7 +7,7 @@ from PIL import Image
 from scipy.ndimage import map_coordinates
 
 from .pointcloud import unproject_depth
-from .pose_graph import PoseEdge, optimize_pose_graph
+from .pose_graph import PoseEdge, optimize_pose_graph, so3_log
 from .registration import global_register_fpfh
 
 
@@ -93,9 +93,24 @@ def refine_prediction_file(input_json, output_json, stride=4, voxel_size=0.01,
             T_j_i, stats = global_register_fpfh(
                 clouds[i], clouds[j], voxel_size=voxel_size
             )
-            weight = max(0.1, stats["fitness"]) / max(stats["inlier_rmse"], 1e-3)
+            prior_j_i = np.linalg.inv(poses[j]) @ poses[i]
+            discrepancy = np.linalg.inv(prior_j_i) @ T_j_i
+            rotation_error = float(np.linalg.norm(so3_log(discrepancy[:3, :3])))
+            translation_error = float(np.linalg.norm(discrepancy[:3, 3]))
+            baseline = float(np.linalg.norm(poses[i][:3, 3] - poses[j][:3, 3]))
+            if rotation_error > np.deg2rad(90) or translation_error > max(0.5, 3.0 * baseline):
+                raise RuntimeError(
+                    f"Pairwise registration disagrees strongly with VGGT prior "
+                    f"(rotation={np.rad2deg(rotation_error):.1f}deg, translation={translation_error:.3f})"
+                )
+            weight = min(10.0, max(0.1, stats["fitness"]) / max(stats["inlier_rmse"], 1e-3))
             edges.append(PoseEdge(i, j, T_j_i, float(weight), "fpfh_ransac_icp"))
-            diagnostics.append({"i": i, "j": j, "accepted": True, **stats})
+            diagnostics.append({
+                "i": i, "j": j, "accepted": True,
+                "rotation_deviation_deg": float(np.rad2deg(rotation_error)),
+                "translation_deviation": translation_error,
+                **stats,
+            })
         except Exception as exc:
             diagnostics.append({"i": i, "j": j, "accepted": False, "reason": str(exc)})
 
