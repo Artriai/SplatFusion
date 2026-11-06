@@ -86,7 +86,11 @@ def run_gaussianobject(
     if mode == "full" and n_views < 4:
         raise ValueError("Full GaussianObject repair expects at least four views")
     if mode == "full":
-        model_assets = [\n            root / "models" / "control_v11f1e_sd15_tile.yaml",\n            root / "models" / "v1-5-pruned.ckpt",\n            root / "models" / "control_v11f1e_sd15_tile.pth",\n        ]\n        missing_assets = [str(p) for p in model_assets if not p.is_file()]\n        if missing_assets:\n            raise FileNotFoundError(f"Missing GaussianObject pretrained model assets: {missing_assets}")\n    init_name = "sharp_prior" if use_sharp_prior and (data / "sharp_prior.ply").is_file() else f"dust3r_{n_views}"
+        model_assets = [
+            root / "models" / "control_v11f1e_sd15_tile.yaml",
+            root / "models" / "v1-5-pruned.ckpt",
+            root / "models" / "control_v11f1e_sd15_tile.pth",
+        ]\n        missing_assets = [str(p) for p in model_assets if not p.is_file()]\n        if missing_assets:\n            raise FileNotFoundError(f"Missing GaussianObject pretrained model assets: {missing_assets}")\n    init_name = "sharp_prior" if use_sharp_prior and (data / "sharp_prior.ply").is_file() else f"dust3r_{n_views}"
     run_name = output.parent.name.replace(" ", "_")
     gs_dir = output / "gs_init"
     loo_dir = output / "gs_loo"
