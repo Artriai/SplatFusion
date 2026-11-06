@@ -16,7 +16,7 @@ import torch
 
 from vggt_omega.models import VGGTOmega
 from vggt_omega.utils.load_fn import load_and_preprocess_images
-from vggt_omega.utils.pose_enc import encoding_to_camera
+from vggt_omega.utils.pose_enc import encoding_to_camera\nfrom splatfusion.preprocess import vggt_preprocess_metadata
 
 
 def main():
@@ -36,7 +36,7 @@ def main():
         state = state["model"]
     model.load_state_dict(state, strict=True)
 
-    images = load_and_preprocess_images(paths, image_resolution=args.resolution).to(device)
+    preprocess = vggt_preprocess_metadata([Path(x) for x in paths], resolution=args.resolution)\n    images = load_and_preprocess_images(paths, image_resolution=args.resolution).to(device)
     dtype = torch.bfloat16 if device.type == "cuda" and torch.cuda.get_device_capability(device)[0] >= 8 else torch.float16
     with torch.inference_mode():
         if device.type == "cuda":
@@ -80,7 +80,7 @@ def main():
             "intrinsics": intrinsics[0, i].detach().float().cpu().numpy().tolist(),
             "depth_path": str(dp.resolve()),
             "confidence_path": conf_path,
-            "depth_shape": list(d.shape),
+            "depth_shape": list(d.shape),\n            "preprocess": preprocess[i],
         })
 
     payload = {
