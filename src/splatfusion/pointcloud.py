@@ -20,19 +20,21 @@ def unproject_depth(depth: np.ndarray, intrinsics: np.ndarray, camera_to_world: 
     yy, xx = np.mgrid[0:h:stride, 0:w:stride]
     z = depth[::stride, ::stride]
     valid = np.isfinite(z) & (z > 0)
-    if confidence is not None:
-        conf = np.asarray(confidence)
-        if conf.shape != depth.shape:
-            raise ValueError("confidence shape must match depth")
-        cs = conf[::stride, ::stride]
-        vals = cs[np.isfinite(cs)]
-        if vals.size:
-            valid &= np.isfinite(cs) & (cs >= np.quantile(vals, confidence_quantile))
     if mask is not None:
         mask = np.asarray(mask, dtype=bool)
         if mask.shape != depth.shape:
             raise ValueError("mask shape must match depth")
         valid &= mask[::stride, ::stride]
+    if confidence is not None:
+        conf = np.asarray(confidence)
+        if conf.shape != depth.shape:
+            raise ValueError("confidence shape must match depth")
+        cs = conf[::stride, ::stride]
+        vals = cs[valid & np.isfinite(cs)]
+        if vals.size:
+            valid &= np.isfinite(cs) & (cs >= np.quantile(vals, confidence_quantile))
+        else:
+            valid[:] = False
     fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
     x = (xx - cx) * z / fx
     y = (yy - cy) * z / fy
