@@ -170,3 +170,9 @@ def read_sharp_metadata(ply):
     if width <= 0 or height <= 0 or K[0, 0] <= 0 or K[1, 1] <= 0:
         raise ValueError("Invalid SHARP camera metadata")
     return {"intrinsics": K, "width": width, "height": height, "extrinsic": extrinsic}
+
+
+def write_vertex_only(vertex_data, output: str | Path):
+    """Write a standard 3DGS PLY without stale per-camera SHARP metadata."""
+    _require_plyfile()
+    PlyData([PlyElement.describe(vertex_data, "vertex")], text=False).write(str(output))
