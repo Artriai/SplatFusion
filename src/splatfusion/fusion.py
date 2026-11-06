@@ -77,7 +77,11 @@ def fuse_sharp_with_vggt(manifest_path, output, voxel_size=0.005,
     This is an initialization fusion only. It does not perform GaussianObject
     training or visibility-aware surface reconstruction.
     """
-    if max_gaussians < 1:\n        raise ValueError("max_gaussians must be positive")\n    if voxel_size < 0:\n        raise ValueError("voxel_size cannot be negative")\n    manifest_path = Path(manifest_path)
+    if max_gaussians < 1:
+        raise ValueError("max_gaussians must be positive")
+    if voxel_size < 0:
+        raise ValueError("voxel_size cannot be negative")
+    manifest_path = Path(manifest_path)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     pred_path = Path(manifest["vggt_predictions"])
     predictions = json.loads(pred_path.read_text(encoding="utf-8"))
