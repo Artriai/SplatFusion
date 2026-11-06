@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 
 
 def _run(command, cwd: Path, env: dict, log_path: Path):
@@ -95,12 +96,16 @@ def run_gaussianobject(
         if missing_assets:
             raise FileNotFoundError(f"Missing GaussianObject pretrained model assets: {missing_assets}")
     init_name = "sharp_prior" if use_sharp_prior and (data / "sharp_prior.ply").is_file() else f"dust3r_{n_views}"
-    run_name = output.parent.name.replace(" ", "_")
+    run_name = (output.parent.name + "-" + datetime.now().strftime("%Y%m%d-%H%M%S")).replace(" ", "_")
     gs_dir = output / "gs_init"
     loo_dir = output / "gs_loo"
     exp_name = f"controlnet_finetune/{run_name}"
     gs_dir.parent.mkdir(parents=True, exist_ok=True)
     loo_dir.parent.mkdir(parents=True, exist_ok=True)
+    if gs_dir.exists():
+        shutil.rmtree(gs_dir)
+    if loo_dir.exists():
+        shutil.rmtree(loo_dir)
     logs = output / "logs"
     env = os.environ.copy()
     if gpu is not None:
@@ -129,6 +134,7 @@ def run_gaussianobject(
     coarse_ply = _latest_iteration_ply(gs_dir)
     result = {
         "mode": mode,
+        "run_id": run_name,
         "dataset": str(data),
         "coarse_model_dir": str(gs_dir),
         "coarse_ply": str(coarse_ply),
