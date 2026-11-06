@@ -78,7 +78,7 @@ def run(args: argparse.Namespace) -> int:
         return 0
     if args.fuse:
         result = fuse_sharp_with_vggt(manifest_path, args.output / "fused" / "fused.ply",
-                                      voxel_size=args.voxel_size, max_gaussians=args.max_gaussians)
+                                      voxel_size=args.voxel_size, max_gaussians=args.max_gaussians,\n                                      allow_unscaled=args.allow_unscaled)
         manifest["fusion"] = result
         manifest["stage"] = "initial_fusion_complete"
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -104,7 +104,7 @@ def main() -> None:
     p.add_argument("--registration-neighbors", type=int, default=4)
     p.add_argument("--fuse", action="store_true", help="Transform and fuse SHARP camera-frame Gaussian priors")
     p.add_argument("--voxel-size", type=float, default=0.005)
-    p.add_argument("--max-gaussians", type=int, default=2000000)
+    p.add_argument("--max-gaussians", type=int, default=2000000)\n    p.add_argument("--allow-unscaled", action="store_true", help="Allow SHARP/VGGT scale fallback when depth correspondences are insufficient")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=run)
     args = parser.parse_args()
